@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/forms.css" type="text/css"/>
+    <title>Registrer deg</title>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="form-box">
+            <div class="image-container">
+                <img src="/bilder/cover1.jpg">
+            </div>
+
+            <div class="form-container">
+
+                <form method="post" action="/registrer">
+                    <h2>Register deg</h2>
+
+                    <br>
+
+                    <div class="input-container">
+                        <input type="text" id="navn" name="navn" placeholder="Skriv inn navnet ditt" required>
+                    </div>
+                    <div class="input-container">
+                        <input type="text" id="brukernavn" name="brukernavn" placeholder="Skriv inn et brukernavn" required>
+                    </div>
+                    <div class="input-container">
+                        <input type="password" id="passord" name="passord" placeholder="Skriv inn et passord" required>
+                    </div>
+                    <div class="input-container">
+                        <input type="password" id="gjenta_passord" name="gjenta_passord" placeholder="Skriv inn passordet på nytt" required>
+                    </div>
+                    
+                    <button type="submit" id="submit_button">Registrer</button>
+                    
+                    <br>
+
+                    <p>Har allerede en bruker?</p> <a href="/logg-inn" style="text-decoration: none;">Logg Inn</a>
+
+                    <% if (message) { %>
+                        <p><%= message %></p>
+                    <% } else { %>
+                        <p style="color:white">12345</p>
+                    <% } %>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
