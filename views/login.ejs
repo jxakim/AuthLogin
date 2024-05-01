@@ -17,17 +17,24 @@
 
             <div class="input-container">
                 <input type="text" id="username" name="username" placeholder="Insert username" required>
+                <p class="error_username"><%= typeof message_username !== 'undefined' ? message_username : "" %></p>
             </div>
 
             <div class="input-container">
                 <input type="password" id="password" name="password" placeholder="Insert password" required>
+                <p class="error_password"><%= typeof message_password !== 'undefined' ? message_password : "" %></p>
+                <br>
             </div>
             
             <button type="submit" id="submit_button">Login</button>
 
             <br><br>
 
-            <a href="/register" style="text-decoration: none;">Don't have an account?</a>
+            <a href="/register" style="text-decoration: none; text-align: center;">Don't have an account?</a>
+
+            <br><br>
+
+            <p class="error"><%= typeof message !== 'undefined' ? message : "" %></p>
         </form>
     </div>
 </body>
