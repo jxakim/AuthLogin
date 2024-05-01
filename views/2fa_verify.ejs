@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify 2fa</title>
+</head>
+
+<body>
+
+    <h1>Verify Two-Factor Authentication</h1>
+    <form action="/verify-2fa" method="post">
+        <label for="code">Enter the code from the app:</label>
+        <input type="text" id="code" name="code" required>
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>

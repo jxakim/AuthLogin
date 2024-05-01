@@ -64,6 +64,30 @@ async function generateQRCode(text, filePath) {
     }
 }
 
+async function hasTwoFASetup(username) {
+    const username = req.cookies.user
+
+    // Check if user has  already set up 2FA
+    const sql = "select twoFAkey from userdata where username = ?";
+    const query = initiateQuery(sql, [username]);
+
+    if(query[0]) {
+        if(query[0].twoFAkey !== null) {
+            return true;
+        }
+    } else {
+        return false;
+    }
+}
+
+async function LoginUser(res, username) {
+    const cookie_time_minutes = 5;
+    res.cookie('loggedin', true, { maxAge: cookie_time_minutes * 60 * 1000, httpOnly: true });
+    res.cookie('user', username, { maxAge: cookie_time_minutes * 60 * 1000, httpOnly: true });
+
+    // Password matches
+    res.render('home', { message: null });
+}
 
 // ---------------------------------------------- Content ---------------------------------------------- //
 
@@ -110,12 +134,11 @@ app.route('/')
                 const passwordMatches = await bcrypt.compare(password, query[0].pswHash);
                 if(passwordMatches) {
 
-                    const cookie_time_minutes = 5;
-                    res.cookie('loggedin', true, { maxAge: cookie_time_minutes * 60 * 1000, httpOnly: true });
-                    res.cookie('user', username, { maxAge: cookie_time_minutes * 60 * 1000, httpOnly: true });
-
-                    // Password matches
-                    res.render('home', { message: null });
+                    if(hasTwoFASetup(username)) {
+                        res.render('2fa_verify');
+                    } else {
+                        LoginUser(res, username);
+                    }
                 } else {
                     // Password does not match
                     res.render('login', { message_password: 'Wrong password.' });
@@ -180,7 +203,22 @@ app.get('/setup-2fa', async (req, res) => {
         res.status(500).send('Internal Server Error');
     }
 });
-    
+
+app.get('/verify-2fa', async (req, res) => {
+    try {
+        const username = req.cookies.user
+
+        if(hasTwoFASetup(username)) {
+            res.render('2fa_verify');
+        } else {
+            console.log("2fa is not set up for this user.");
+        }
+
+    } catch (err) {
+        console.error('Error verifying 2fa:', err);
+        res.status(500).send('Internal Server Error');
+    }
+});
 
 app.post('/verify-totp', async (req, res) => {
     try {
