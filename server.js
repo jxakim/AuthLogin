@@ -65,28 +65,55 @@ async function generateQRCode(text, filePath) {
 }
 
 async function hasTwoFASetup(username) {
-    const username = req.cookies.user
+    const sql = "SELECT * FROM userdata WHERE username = ?";
+    const query = await initiateQuery(sql, [username]);
 
-    // Check if user has  already set up 2FA
-    const sql = "select twoFAkey from userdata where username = ?";
-    const query = initiateQuery(sql, [username]);
-
-    if(query[0]) {
-        if(query[0].twoFAkey !== null) {
-            return true;
-        }
+    if (query.length > 0 && query[0].twoFAkey) {
+        return true;
     } else {
         return false;
     }
 }
+
 
 async function LoginUser(res, username) {
     const cookie_time_minutes = 5;
     res.cookie('loggedin', true, { maxAge: cookie_time_minutes * 60 * 1000, httpOnly: true });
     res.cookie('user', username, { maxAge: cookie_time_minutes * 60 * 1000, httpOnly: true });
 
-    // Password matches
-    res.render('home', { message: null });
+    res.render('home', { username: username, hasTwoFASetup: await hasTwoFASetup(username) });
+}
+
+async function LogoutUser(req, res) {
+    const username = req.cookies.user;
+
+    res.cookie('loggedin', true, { maxAge: 0, httpOnly: true });
+    res.cookie('user', username, { maxAge: 0, httpOnly: true });
+
+    res.render('login', { message: null });
+}
+
+async function verify_totp(code, username, res) {
+    const sql = 'select twoFAkey from userdata where username = ?';
+    const query = await initiateQuery(sql, [username]);
+
+    if(query[0]) {
+
+        // Verify the TOTP code entered by the user
+        const verified = speakeasy.totp.verify({
+            secret: query[0].twoFAkey,
+            encoding: 'base32',
+            token: code,
+            window: 2,
+        });
+        if (verified) {
+            // Authentication successful
+            LoginUser(res, username);
+        } else {
+            // Invalid code
+            res.render('login', { message: 'Invalid TOTP code' });
+        }
+    }
 }
 
 // ---------------------------------------------- Content ---------------------------------------------- //
@@ -97,6 +124,14 @@ app.get('/login', async (req, res) => {
     } else {
         res.render('login', { message: null });
     } 
+})
+
+app.get('/logout', async (req, res) => {
+    if(req.cookies.loggedin) {
+        LogoutUser(req, res);
+    } else {
+        res.render('login', { message: 'You have been logged out.' });
+    }
 })
 
 app.route('/')
@@ -133,12 +168,9 @@ app.route('/')
             } else if(!query[0].tempPsw) {
                 const passwordMatches = await bcrypt.compare(password, query[0].pswHash);
                 if(passwordMatches) {
+                    const twofa = await hasTwoFASetup(username);
+                    twofa ? res.render('2fa_verify', {username: username}) : LoginUser(res, username);
 
-                    if(hasTwoFASetup(username)) {
-                        res.render('2fa_verify');
-                    } else {
-                        LoginUser(res, username);
-                    }
                 } else {
                     // Password does not match
                     res.render('login', { message_password: 'Wrong password.' });
@@ -156,24 +188,19 @@ app.route('/create_password')
         try {
             const { username, password, passwordrepeat } = req.body;
     
-            console.log(username);
-    
             if (password !== passwordrepeat) {
                 res.render("change_pass", { message: "Passwords do not match." });
             } else {
                 let hashedPassword = await bcrypt.hash(password, 10);
+
                 const query = "UPDATE userdata SET pswHash = ? WHERE username = ?";
-                const sql = await initiateQuery(query, [hashedPassword, "admin"]);
+                const sql = await initiateQuery(query, [hashedPassword, username]);
 
                 const query2 = "UPDATE userdata SET tempPsw = null WHERE username = ?";
-                const sql2 = await initiateQuery(query2, [username]);
+                await initiateQuery(query2, [username]);
                 
                 if(sql) {
-                    const cookie_time_minutes = 5;
-                    res.cookie('loggedin', true, { maxAge: cookie_time_minutes * 60 * 1000, httpOnly: true });
-                    res.cookie('user', username, { maxAge: cookie_time_minutes * 60 * 1000, httpOnly: true });
-
-                    res.render("home", { message: null });
+                    LoginUser(res, username)
                 }
             }
     
@@ -204,48 +231,24 @@ app.get('/setup-2fa', async (req, res) => {
     }
 });
 
-app.get('/verify-2fa', async (req, res) => {
+app.post('/verify-2fa', async (req, res) => {
     try {
-        const username = req.cookies.user
+        const {username, code} = req.body;
 
-        if(hasTwoFASetup(username)) {
-            res.render('2fa_verify');
-        } else {
-            console.log("2fa is not set up for this user.");
-        }
+        verify_totp(code, username, res);
 
     } catch (err) {
-        console.error('Error verifying 2fa:', err);
+        console.error('Error verifying 2FA:', err);
         res.status(500).send('Internal Server Error');
     }
 });
 
+
 app.post('/verify-totp', async (req, res) => {
     try {
-        const { code } = req.body;
+        const {code} = req.body;
         const username = req.cookies.user;
-
-        const sql = 'select twoFAkey from userdata where username = ?';
-        const query = await initiateQuery(sql, [username]);
-
-        if(query[0]) {
-
-            // Verify the TOTP code entered by the user
-            const verified = speakeasy.totp.verify({
-                secret: query[0].twoFAkey,
-                encoding: 'base32',
-                token: code,
-                window: 2,
-            });
-            if (verified) {
-                // Authentication successful
-                console.log("User verified");
-                res.render('home', { message: 'welcome' }); // Redirect to dashboard or home page
-            } else {
-                // Invalid code
-                res.render('login', { message: 'Invalid TOTP code' });
-            }
-        }
+        verify_totp(code, username, res);
 
     } catch (err) {
         console.error('Error verifying TOTP code:', err);
