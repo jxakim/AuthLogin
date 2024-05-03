@@ -5,9 +5,7 @@ const cookieParser = require('cookie-parser');
 const app = express();
 const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
-const fs = require('fs');
 const path = require('path');
-const { QuickReplyAction } = require('twilio/lib/rest/content/v1/content');
 
 // set the view engine to ejs
 app.set('view engine', 'ejs');
@@ -31,7 +29,7 @@ db.connect((err) => { if (err) throw err });
   
 // ---------------------------------------------- Functions ---------------------------------------------- //
   
-// SQL Query håndtering
+// Query handler
 function initiateQuery(sql, values) {
     return new Promise((resolve, reject) => {
         db.query(sql, values, (err, result) => {
@@ -41,40 +39,7 @@ function initiateQuery(sql, values) {
     });
 }
 
-// Function to generate a secret key and QR code URL
-async function generateSecret() {
-    const secret = speakeasy.generateSecret({ length: 20 });
-    const otpauthUrl = speakeasy.otpauthURL({
-        secret: secret.base32,
-        label: 'Authentication for AuthLogin',
-        issuer: 'AuthLogin',
-        algorithm: 'sha1', // Use the same algorithm supported by Microsoft Authenticator
-    });
-    const qrCodeUrl = await qrcode.toDataURL(otpauthUrl);
-    return { secret, qrCodeUrl };
-}
-
-// Function to generate QR code image
-async function generateQRCode(text, filePath) {
-    try {
-        await qrcode.toFile(filePath, text);
-        console.log('QR code generated successfully:', filePath);
-    } catch (err) {
-        console.error('Error generating QR code:', err);
-    }
-}
-
-async function hasTwoFASetup(username) {
-    const sql = "SELECT * FROM userdata WHERE username = ?";
-    const query = await initiateQuery(sql, [username]);
-
-    if (query.length > 0 && query[0].twoFAkey) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
+// Login function handlers
 
 async function LoginUser(res, username) {
     const cookie_time_minutes = 5;
@@ -92,6 +57,8 @@ async function LogoutUser(req, res) {
 
     res.render('login', { message: null });
 }
+
+// Two-factor function handlers
 
 async function verify_totp(code, username, res) {
     const sql = 'select twoFAkey from userdata where username = ?';
@@ -116,7 +83,43 @@ async function verify_totp(code, username, res) {
     }
 }
 
+async function hasTwoFASetup(username) {
+    const sql = "SELECT * FROM userdata WHERE username = ?";
+    const query = await initiateQuery(sql, [username]);
+
+    if (query.length > 0 && query[0].twoFAkey) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// 2fa Code Handlers
+
+async function generateSecret() {
+    const secret = speakeasy.generateSecret({ length: 20 });
+    const otpauthUrl = speakeasy.otpauthURL({
+        secret: secret.base32,
+        label: 'Authentication for AuthLogin',
+        issuer: 'AuthLogin',
+        algorithm: 'sha1', // Use the same algorithm supported by Microsoft Authenticator
+    });
+    const qrCodeUrl = await qrcode.toDataURL(otpauthUrl);
+    return { secret, qrCodeUrl };
+}
+
+async function generateQRCode(text, filePath) {
+    try {
+        await qrcode.toFile(filePath, text);
+        console.log('QR code generated successfully:', filePath);
+    } catch (err) {
+        console.error('Error generating QR code:', err);
+    }
+}
+
 // ---------------------------------------------- Content ---------------------------------------------- //
+
+// Index handler (login, index page)
 
 app.get('/login', async (req, res) => {
     if (req.cookies.loggedin) {
@@ -133,6 +136,32 @@ app.get('/logout', async (req, res) => {
         res.render('login', { message: 'You have been logged out.' });
     }
 })
+
+app.route('/create_password')
+    .post(async (req, res) => {
+        try {
+            const { username, password, passwordrepeat } = req.body;
+    
+            if (password !== passwordrepeat) {
+                res.render("change_pass", { message: "Passwords do not match." });
+            } else {
+                let hashedPassword = await bcrypt.hash(password, 10);
+
+                const query = "UPDATE userdata SET pswHash = ? WHERE username = ?";
+                const sql = await initiateQuery(query, [hashedPassword, username]);
+
+                const query2 = "UPDATE userdata SET tempPsw = null WHERE username = ?";
+                await initiateQuery(query2, [username]);
+                
+                if(sql) {
+                    LoginUser(res, username)
+                }
+            }
+    
+        } catch (err) {
+            console.log("Error: " + err);
+        }
+    });
 
 app.route('/')
     .get(async (req, res) => {
@@ -183,46 +212,20 @@ app.route('/')
     });
 
 
-app.route('/create_password')
-    .post(async (req, res) => {
-        try {
-            const { username, password, passwordrepeat } = req.body;
-    
-            if (password !== passwordrepeat) {
-                res.render("change_pass", { message: "Passwords do not match." });
-            } else {
-                let hashedPassword = await bcrypt.hash(password, 10);
-
-                const query = "UPDATE userdata SET pswHash = ? WHERE username = ?";
-                const sql = await initiateQuery(query, [hashedPassword, username]);
-
-                const query2 = "UPDATE userdata SET tempPsw = null WHERE username = ?";
-                await initiateQuery(query2, [username]);
-                
-                if(sql) {
-                    LoginUser(res, username)
-                }
-            }
-    
-        } catch (err) {
-            console.log("Error: " + err);
-        }
-    });
-
+// Two-Factor handling
 
 app.get('/setup-2fa', async (req, res) => {
     try {
-        const { secret, qrCodeUrl } = await generateSecret(); // Wait for the QR code generation
+        const { secret, qrCodeUrl } = await generateSecret();
         const username = req.cookies.user;
 
         const query = 'UPDATE userdata SET twoFAkey = ? WHERE username = ?';
         await initiateQuery(query, [secret.base32, username]);
 
-        const filePath = path.join(__dirname, 'public', 'img', 'qrcode.png'); // Path where the QR code image will be saved
+        const filePath = path.join(__dirname, 'public', 'img', 'qrcode.png');
 
-        await generateQRCode(secret.otpauth_url, filePath); // Wait for the QR code image generation
+        await generateQRCode(secret.otpauth_url, filePath);
 
-        // Render the EJS template and pass the QR code URL and other necessary data
         res.render('2fa_setup', { qrCodeUrl, secret, username });
 
     } catch (err) {
@@ -243,7 +246,6 @@ app.post('/verify-2fa', async (req, res) => {
     }
 });
 
-
 app.post('/verify-totp', async (req, res) => {
     try {
         const {code} = req.body;
@@ -256,7 +258,7 @@ app.post('/verify-totp', async (req, res) => {
     }
 });
 
-
+// Port connection
 app.listen(port, () => {
     console.clear();
     console.log(`Connect to localhost:${port}`);
