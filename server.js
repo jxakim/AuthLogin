@@ -46,7 +46,7 @@ async function generateSecret() {
     const secret = speakeasy.generateSecret({ length: 20 });
     const otpauthUrl = speakeasy.otpauthURL({
         secret: secret.base32,
-        label: 'AuthLogin',
+        label: 'Authentication for AuthLogin',
         issuer: 'AuthLogin',
         algorithm: 'sha1', // Use the same algorithm supported by Microsoft Authenticator
     });
