@@ -65,8 +65,6 @@ async function verify_totp(code, username, res) {
     const query = await initiateQuery(sql, [username]);
 
     if(query[0]) {
-
-        // Verify the TOTP code entered by the user
         const verified = speakeasy.totp.verify({
             secret: query[0].twoFAkey,
             encoding: 'base32',
@@ -102,7 +100,7 @@ async function generateSecret() {
         secret: secret.base32,
         label: 'Authentication for AuthLogin',
         issuer: 'AuthLogin',
-        algorithm: 'sha1', // Use the same algorithm supported by Microsoft Authenticator
+        algorithm: 'sha1',
     });
     const qrCodeUrl = await qrcode.toDataURL(otpauthUrl);
     return { secret, qrCodeUrl };
